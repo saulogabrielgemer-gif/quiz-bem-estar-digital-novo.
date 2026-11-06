@@ -1,1 +1,492 @@
 
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#17152e">
+  <title>Quiz — Bem-Estar Digital</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111024;
+      --panel: #211e40;
+      --panel2: #2b2750;
+      --accent: #a78bfa;
+      --text: #f8f7ff;
+      --muted: #c4bfdc;
+      --border: #45406d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 20px;
+      font-family: system-ui, Arial, sans-serif;
+      background: radial-gradient(circle at top, #292451, var(--bg) 65%);
+      color: var(--text);
+    }
+
+    button, input { font: inherit; }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 17px;
+      background: var(--accent);
+      color: #17112e;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    input {
+      width: 100%;
+      min-width: 0;
+      padding: 13px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #17152e;
+      color: white;
+      outline-color: var(--accent);
+    }
+
+    .container { max-width: 850px; margin: auto; }
+
+    header { text-align: center; margin: 10px 0 24px; }
+
+    header h1 {
+      font-size: clamp(25px, 5vw, 39px);
+      margin-bottom: 8px;
+    }
+
+    header p { color: var(--muted); margin-top: 0; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 22px;
+      margin-bottom: 18px;
+      box-shadow: 0 12px 35px #0002;
+    }
+
+    h2 { margin-top: 0; }
+    .hidden { display: none !important; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: 12px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .row > input { flex: 1; }
+    .center { text-align: center; }
+    .big-code { font-size: clamp(34px, 9vw, 54px); font-weight: 900; letter-spacing: 6px; }
+    .qr { display: block; width: 190px; max-width: 100%; background: white; padding: 8px; border-radius: 12px; margin: 14px auto; }
+    .player-list { display: grid; gap: 8px; padding: 0; list-style: none; }
+    .player-list li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--panel2); border-radius: 9px; }
+    .option-list { display: grid; gap: 12px; margin-top: 20px; }
+    .option { width: 100%; text-align: left; background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+    .option:not(:disabled):hover { border-color: var(--accent); }
+    .option:disabled { opacity: 1; }
+    .question-number { color: var(--accent); font-weight: 800; }
+    .notice { margin-top: 12px; color: #e9d5ff; overflow-wrap: anywhere; }
+    .timer { font-size: 26px; font-weight: 900; }
+    .bar { height: 8px; border-radius: 10px; background: #100e20; overflow: hidden; margin-top: 10px; }
+    .bar-inner { height: 100%; width: 100%; background: var(--accent); transition: width 1s linear; }
+    .rank-number { color: var(--accent); font-weight: 900; min-width: 30px; }
+    footer { text-align: center; color: var(--muted); font-size: 13px; padding: 8px; }
+
+    @media (max-width: 520px) {
+      body { padding: 12px; }
+      .panel { padding: 16px; }
+      .two { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🧠 Bem-Estar Digital</h1>
+    <p>Quiz sobre saúde mental, internet e tecnologia</p>
+  </header>
+
+  <section class="panel" id="home">
+    <h2>Vamos jogar?</h2>
+    <p class="muted">Crie uma sala para apresentar o quiz ou entre em uma sala existente.</p>
+    <div class="stack">
+      <label>
+        Seu nome
+        <input id="nameInput" maxlength="24" placeholder="Digite seu nome">
+      </label>
+      <div class="two">
+        <button id="createBtn">🎮 Criar sala</button>
+        <button id="showJoinBtn">🔑 Entrar em uma sala</button>
+      </div>
+      <div id="joinForm" class="stack hidden">
+        <label>
+          Código da sala
+          <input id="codeInput" maxlength="6" placeholder="Ex.: A1B2C3" autocomplete="off">
+        </label>
+        <button id="joinBtn">Entrar no jogo</button>
+      </div>
+    </div>
+    <p id="homeNotice" class="notice" role="status"></p>
+  </section>
+
+  <section class="panel hidden" id="roomPanel">
+    <div class="center">
+      <p class="muted">Código da sala</p>
+      <div class="big-code" id="roomCode">------</div>
+      <button id="copyBtn">Copiar código</button>
+      <p id="roomLinkText" class="muted"></p>
+      <img id="qrImage" class="qr hidden" alt="QR Code para entrar na sala">
+      <p class="muted" id="qrCaption">Compartilhe o código com os participantes.</p>
+    </div>
+
+    <hr style="border-color:var(--border); margin:22px 0">
+
+    <h2>👥 Participantes <span id="playerCount">0</span></h2>
+    <ul class="player-list" id="playerList"></ul>
+    <p id="lobbyNotice" class="notice" role="status">Aguardando participantes...</p>
+    <button id="startBtn" class="hidden">Começar o quiz</button>
+  </section>
+
+  <section class="panel hidden" id="gamePanel">
+    <div class="row" style="justify-content:space-between">
+      <span class="question-number" id="questionNumber">Pergunta 1</span>
+      <span class="timer" id="timer">20s</span>
+    </div>
+    <div class="bar"><div class="bar-inner" id="timerBar"></div></div>
+    <h2 id="questionText" style="margin-top:24px"></h2>
+    <div class="option-list" id="answerOptions"></div>
+    <p id="answerNotice" class="notice" role="status"></p>
+    <p id="answerCount" class="muted"></p>
+    <div id="explanation" class="hidden">
+      <hr style="border-color:var(--border); margin:22px 0">
+      <h3>Resposta e explicação</h3>
+      <p id="explanationText"></p>
+    </div>
+    <button id="nextBtn" class="hidden">Próxima pergunta</button>
+  </section>
+
+  <section class="panel hidden" id="finalPanel">
+    <h2 class="center">🏆 Resultado final</h2>
+    <p class="center muted">Confira a pontuação da partida.</p>
+    <ol class="player-list" id="finalRanking"></ol>
+    <button id="backBtn">Voltar ao início</button>
+  </section>
+
+  <footer>Saúde Mental e Bem-Estar Digital — Elo Ciências 2026</footer>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(() => {
+  const socket = io();
+
+  const $ = id => document.getElementById(id);
+
+  let role = "";
+  let roomCode = "";
+  let playerName = "";
+  let totalQuestions = 10;
+  let currentQuestion = 0;
+  let timeLimit = 20;
+  let timerInterval = null;
+  let questionDeadline = 0;
+  let answered = false;
+
+  function show(id) { $(id).classList.remove("hidden"); }
+  function hide(id) { $(id).classList.add("hidden"); }
+
+  function notice(id, message) {
+    $(id).textContent = message || "";
+  }
+
+  function stopTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
+  function startTimer(seconds) {
+    stopTimer();
+    timeLimit = seconds;
+    questionDeadline = Date.now() + seconds * 1000;
+
+    function update() {
+      const remaining = Math.max(0, (questionDeadline - Date.now()) / 1000);
+      $("timer").textContent = Math.ceil(remaining) + "s";
+      $("timerBar").style.width = Math.max(0, remaining / timeLimit * 100) + "%";
+
+      if (remaining <= 0) stopTimer();
+    }
+
+    update();
+    timerInterval = setInterval(update, 200);
+  }
+
+  function renderPlayers(players) {
+    $("playerCount").textContent = players.length;
+    $("playerList").replaceChildren();
+
+    players.forEach(player => {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = player.name + (player.id === socket.id && role === "host" ? " (apresentador)" : "");
+      li.appendChild(name);
+
+      const score = document.createElement("span");
+      score.textContent = player.score + " pts";
+      li.appendChild(score);
+
+      $("playerList").appendChild(li);
+    });
+  }
+
+  function renderRanking(players, elementId) {
+    const list = $(elementId);
+    list.replaceChildren();
+
+    players.forEach((player, index) => {
+      const li = document.createElement("li");
+      const left = document.createElement("span");
+      left.innerHTML = '<span class="rank-number">' + (index + 1) + 'º</span> ';
+      const name = document.createElement("span");
+      name.textContent = player.name;
+      left.appendChild(name);
+
+      const score = document.createElement("strong");
+      score.textContent = player.score + " pts";
+      li.append(left, score);
+      list.appendChild(li);
+    });
+  }
+
+  function enterRoom(data, isHost) {
+    roomCode = data.code;
+    totalQuestions = data.totalQuestions || 10;
+
+    hide("home");
+    show("roomPanel");
+    hide("gamePanel");
+    hide("finalPanel");
+
+    $("roomCode").textContent = roomCode;
+    const roomUrl = location.origin + "/?sala=" + roomCode;
+    $("roomLinkText").textContent = "Link do jogo: " + roomUrl;
+
+    $("qrImage").src =
+      "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" +
+      encodeURIComponent(roomUrl);
+    $("qrImage").alt = "QR Code para abrir o jogo na sala " + roomCode;
+    show("qrImage");
+
+    $("qrCaption").textContent = "Leia o QR Code e digite o código da sala.";
+    $("startBtn").classList.toggle("hidden", !isHost);
+    $("startBtn").disabled = false;
+    notice("lobbyNotice", isHost ? "Compartilhe o código e aguarde os participantes." : "Você entrou na sala. Aguarde o apresentador.");
+  }
+
+  $("showJoinBtn").addEventListener("click", () => {
+    show("joinForm");
+    $("codeInput").focus();
+  });
+
+  $("createBtn").addEventListener("click", () => {
+    playerName = $("nameInput").value.trim() || "Apresentador";
+    role = "host";
+    notice("homeNotice", "Criando sala...");
+    socket.emit("create-room", { name: playerName });
+  });
+
+  $("joinBtn").addEventListener("click", () => {
+    playerName = $("nameInput").value.trim();
+    const code = $("codeInput").value.trim().toUpperCase();
+
+    if (!playerName) {
+      notice("homeNotice", "Digite seu nome antes de entrar.");
+      $("nameInput").focus();
+      return;
+    }
+
+    if (!code) {
+      notice("homeNotice", "Digite o código da sala.");
+      $("codeInput").focus();
+      return;
+    }
+
+    role = "player";
+    notice("homeNotice", "Entrando na sala...");
+    socket.emit("join-room", { code, name: playerName });
+  });
+
+  $("codeInput").addEventListener("input", () => {
+    $("codeInput").value = $("codeInput").value.toUpperCase().replace(/[^A-F0-9]/g, "").slice(0, 6);
+  });
+
+  $("copyBtn").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(roomCode);
+      notice("lobbyNotice", "Código copiado!");
+    } catch {
+      notice("lobbyNotice", "Seu código é: " + roomCode);
+    }
+  });
+
+  $("startBtn").addEventListener("click", () => {
+    $("startBtn").disabled = true;
+    socket.emit("start-game", { code: roomCode });
+  });
+
+  $("nextBtn").addEventListener("click", () => {
+    hide("nextBtn");
+    notice("answerNotice", "Carregando próxima pergunta...");
+    socket.emit("next-question", { code: roomCode });
+  });
+
+  $("backBtn").addEventListener("click", () => location.href = location.pathname);
+
+  function renderQuestion(data) {
+    currentQuestion = data.index;
+    totalQuestions = data.totalQuestions;
+    answered = false;
+
+    hide("roomPanel");
+    hide("finalPanel");
+    show("gamePanel");
+    hide("explanation");
+    hide("nextBtn");
+
+    $("questionNumber").textContent =
+      "Pergunta " + (data.index + 1) + " de " + data.totalQuestions;
+    $("questionText").textContent = data.question;
+    $("answerOptions").replaceChildren();
+    notice("answerNotice", "");
+    $("answerCount").textContent = "";
+
+    data.options.forEach((option, index) => {
+      const button = document.createElement("button");
+      button.className = "option";
+      button.textContent = String.fromCharCode(65 + index) + ". " + option;
+      button.addEventListener("click", () => {
+        if (answered) return;
+        answered = true;
+
+        [...$("answerOptions").querySelectorAll("button")].forEach(b => {
+          b.disabled = true;
+        });
+
+        socket.emit("submit-answer", {
+          code: roomCode,
+          answerIndex: index
+        });
+
+        notice("answerNotice", "Resposta enviada! Aguarde o resultado.");
+      });
+      $("answerOptions").appendChild(button);
+    });
+
+    startTimer(data.timeLimit);
+  }
+
+  socket.on("room-created", data => {
+    enterRoom(data, true);
+    notice("homeNotice", "");
+  });
+
+  socket.on("joined-room", data => {
+    enterRoom(data, false);
+    notice("homeNotice", "");
+  });
+
+  socket.on("join-error", message => {
+    notice("homeNotice", message);
+    $("joinBtn").disabled = false;
+  });
+
+  socket.on("room-update", data => {
+    renderPlayers(data.players);
+    if (!data.started && role === "host") {
+      $("startBtn").disabled = data.players.length === 0;
+    }
+  });
+
+  socket.on("game-started", data => {
+    totalQuestions = data.totalQuestions;
+    hide("roomPanel");
+    show("gamePanel");
+    notice("answerNotice", "");
+  });
+
+  socket.on("new-question", data => renderQuestion(data));
+
+  socket.on("answer-received", data => {
+    notice("answerNotice", "Resposta registrada. Aguarde o resultado da pergunta.");
+  });
+
+  socket.on("answer-count", data => {
+    $("answerCount").textContent =
+      "Respostas recebidas: " + data.answered + " de " + data.total;
+  });
+
+  socket.on("question-result", data => {
+    stopTimer();
+
+    hide("answerOptions");
+    show("explanation");
+    $("explanationText").textContent =
+      "Resposta correta: " +
+      String.fromCharCode(65 + data.correctIndex) +
+      ". " + data.explanation;
+
+    renderRanking(data.players, "finalRanking");
+
+    if (role === "host") {
+      show("nextBtn");
+      $("nextBtn").textContent =
+        currentQuestion + 1 >= totalQuestions
+          ? "Ver ranking final"
+          : "Próxima pergunta";
+      notice("answerNotice", "Pergunta encerrada.");
+    } else {
+      notice("answerNotice", "Pergunta encerrada. Aguarde a próxima.");
+    }
+  });
+
+  socket.on("game-over", data => {
+    stopTimer();
+    hide("gamePanel");
+    hide("roomPanel");
+    show("finalPanel");
+    renderRanking(data.players, "finalRanking");
+  });
+
+  socket.on("room-closed", message => {
+    stopTimer();
+    hide("roomPanel");
+    hide("gamePanel");
+    show("home");
+    notice("homeNotice", message);
+  });
+
+  socket.on("connect_error", () => {
+    notice("homeNotice", "Não foi possível conectar ao servidor. Tente atualizar a página.");
+  });
+
+  const params = new URLSearchParams(location.search);
+  const inviteCode = params.get("sala");
+
+  if (inviteCode) {
+    $("codeInput").value = inviteCode.toUpperCase();
+    show("joinForm");
+  }
+})();
+</script>
+</body>
+</html>
+
