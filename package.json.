@@ -1,1 +1,15 @@
 
+{
+  "name": "quiz-bem-estar-digital-novo",
+  "version": "1.0.0",
+  "description": "Quiz multiplayer sobre Saúde Mental e Bem-Estar Digital",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
+
