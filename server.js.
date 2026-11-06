@@ -1,1 +1,404 @@
 
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+const crypto = require("crypto");
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+const PORT = process.env.PORT || 3000;
+const rooms = new Map();
+
+app.use(express.static("public"));
+
+const questions = [
+  {
+    question: "O que significa bem-estar digital?",
+    options: [
+      "Usar telas sem limites",
+      "Usar a tecnologia de forma equilibrada",
+      "Nunca usar a internet",
+      "Ficar conectado o dia inteiro"
+    ],
+    correctIndex: 1,
+    explanation: "Bem-estar digital é manter uma relação saudável e equilibrada com a tecnologia."
+  },
+  {
+    question: "O que podemos fazer para descansar da tecnologia?",
+    options: [
+      "Usar mais aplicativos",
+      "Dormir com o celular na mão",
+      "Fazer pausas nas telas",
+      "Ficar conectado durante as refeições"
+    ],
+    correctIndex: 2,
+    explanation: "Fazer pausas ajuda a equilibrar o tempo online e offline."
+  },
+  {
+    question: "Qual atitude ajuda a cuidar da saúde mental?",
+    options: [
+      "Ignorar todas as emoções",
+      "Conversar com alguém de confiança",
+      "Evitar todos os amigos",
+      "Passar a noite inteira jogando"
+    ],
+    correctIndex: 1,
+    explanation: "Conversar com alguém de confiança pode ajudar a lidar com sentimentos e dificuldades."
+  },
+  {
+    question: "O que fazer ao ver uma notícia na internet?",
+    options: [
+      "Compartilhar sem ler",
+      "Acreditar em qualquer publicação",
+      "Verificar se a fonte é confiável",
+      "Enviar para todos imediatamente"
+    ],
+    correctIndex: 2,
+    explanation: "Verificar a fonte ajuda a evitar a divulgação de informações falsas."
+  },
+  {
+    question: "Qual é um sinal de uso equilibrado da tecnologia?",
+    options: [
+      "Deixar de dormir para jogar",
+      "Abandonar todas as atividades offline",
+      "Equilibrar telas, descanso e convivência",
+      "Usar o celular durante toda a aula"
+    ],
+    correctIndex: 2,
+    explanation: "O equilíbrio inclui descanso, estudos, lazer e convivência com outras pessoas."
+  },
+  {
+    question: "Como agir diante de ofensas na internet?",
+    options: [
+      "Ofender de volta",
+      "Compartilhar a ofensa",
+      "Pedir ajuda a um adulto de confiança",
+      "Participar da provocação"
+    ],
+    correctIndex: 2,
+    explanation: "Buscar ajuda e denunciar situações de ofensa são atitudes importantes."
+  },
+  {
+    question: "Por que devemos proteger nossos dados pessoais?",
+    options: [
+      "Para evitar riscos à privacidade",
+      "Para receber mais mensagens",
+      "Para divulgar nossas senhas",
+      "Para facilitar golpes"
+    ],
+    correctIndex: 0,
+    explanation: "Proteger dados pessoais ajuda a preservar a privacidade e a segurança."
+  },
+  {
+    question: "O que pode ajudar a melhorar o sono?",
+    options: [
+      "Ficar vendo vídeos a noite toda",
+      "Manter uma rotina de descanso",
+      "Tomar café antes de dormir",
+      "Deixar notificações tocando a noite toda"
+    ],
+    correctIndex: 1,
+    explanation: "Uma rotina regular e menos estímulos antes de dormir podem favorecer o descanso."
+  },
+  {
+    question: "Como manter boas relações fora da internet?",
+    options: [
+      "Conversar pessoalmente e ouvir os outros",
+      "Ignorar familiares e amigos",
+      "Usar o celular em toda conversa",
+      "Evitar atividades em grupo"
+    ],
+    correctIndex: 0,
+    explanation: "A convivência presencial e a escuta ajudam a fortalecer os relacionamentos."
+  },
+  {
+    question: "O que fazer quando o conteúdo online causa desconforto?",
+    options: [
+      "Continuar assistindo obrigatoriamente",
+      "Compartilhar sem pensar",
+      "Fazer uma pausa e procurar apoio se necessário",
+      "Acreditar que precisa ver tudo"
+    ],
+    correctIndex: 2,
+    explanation: "Você pode interromper o conteúdo, ajustar suas escolhas e conversar com alguém de confiança."
+  }
+];
+
+function publicPlayers(room) {
+  return [...room.players.values()]
+    .map(player => ({
+      id: player.id,
+      name: player.name,
+      score: player.score
+    }))
+    .sort((a, b) => b.score - a.score);
+}
+
+function sendRoomUpdate(code) {
+  const room = rooms.get(code);
+  if (room) {
+    io.to(code).emit("room-update", {
+      players: publicPlayers(room),
+      started: room.started
+    });
+  }
+}
+
+function clearQuestionTimer(room) {
+  if (room.timer) {
+    clearTimeout(room.timer);
+    room.timer = null;
+  }
+}
+
+function finishQuestion(code) {
+  const room = rooms.get(code);
+  if (!room || !room.started || room.finishedQuestion) return;
+
+  room.finishedQuestion = true;
+  clearQuestionTimer(room);
+
+  const question = questions[room.questionIndex];
+
+  io.to(code).emit("question-result", {
+    correctIndex: question.correctIndex,
+    explanation: question.explanation,
+    players: publicPlayers(room)
+  });
+}
+
+function sendQuestion(code) {
+  const room = rooms.get(code);
+  if (!room || room.questionIndex >= questions.length) return;
+
+  clearQuestionTimer(room);
+  room.finishedQuestion = false;
+  room.answers.clear();
+
+  const question = questions[room.questionIndex];
+
+  io.to(code).emit("new-question", {
+    question: question.question,
+    options: question.options,
+    index: room.questionIndex,
+    totalQuestions: questions.length,
+    timeLimit: room.timeLimit
+  });
+
+  room.timer = setTimeout(
+    () => finishQuestion(code),
+    room.timeLimit * 1000
+  );
+}
+
+function makeCode() {
+  let code;
+  do {
+    code = crypto.randomBytes(3).toString("hex").toUpperCase();
+  } while (rooms.has(code));
+  return code;
+}
+
+io.on("connection", socket => {
+  socket.on("create-room", ({ name } = {}) => {
+    const hostName = String(name || "Apresentador").trim().slice(0, 24);
+    const code = makeCode();
+
+    const room = {
+      hostId: socket.id,
+      hostName,
+      players: new Map(),
+      answers: new Map(),
+      questionIndex: 0,
+      started: false,
+      finishedQuestion: false,
+      timeLimit: 20,
+      timer: null
+    };
+
+    rooms.set(code, room);
+    socket.join(code);
+    socket.data.roomCode = code;
+    socket.data.role = "host";
+
+    socket.emit("room-created", {
+      code,
+      totalQuestions: questions.length
+    });
+
+    sendRoomUpdate(code);
+  });
+
+  socket.on("join-room", ({ code, name } = {}) => {
+    code = String(code || "").trim().toUpperCase();
+    name = String(name || "").trim().slice(0, 24);
+
+    const room = rooms.get(code);
+
+    if (!room) {
+      socket.emit("join-error", "Sala não encontrada. Confira o código.");
+      return;
+    }
+
+    if (room.started) {
+      socket.emit("join-error", "Esta partida já começou.");
+      return;
+    }
+
+    if (!name) {
+      socket.emit("join-error", "Digite seu nome para entrar.");
+      return;
+    }
+
+    if ([...room.players.values()].some(
+      player => player.name.toLowerCase() === name.toLowerCase()
+    )) {
+      socket.emit("join-error", "Esse nome já está sendo usado na sala.");
+      return;
+    }
+
+    room.players.set(socket.id, {
+      id: socket.id,
+      name,
+      score: 0
+    });
+
+    socket.join(code);
+    socket.data.roomCode = code;
+    socket.data.role = "player";
+
+    socket.emit("joined-room", {
+      code,
+      name,
+      totalQuestions: questions.length
+    });
+
+    sendRoomUpdate(code);
+  });
+
+  socket.on("start-game", ({ code } = {}) => {
+    code = String(code || socket.data.roomCode || "").toUpperCase();
+    const room = rooms.get(code);
+
+    if (!room || room.hostId !== socket.id || room.started) return;
+
+    room.started = true;
+    room.questionIndex = 0;
+    room.players.forEach(player => {
+      player.score = 0;
+    });
+
+    io.to(code).emit("game-started", {
+      totalQuestions: questions.length
+    });
+
+    sendQuestion(code);
+  });
+
+  socket.on("submit-answer", ({ code, answerIndex } = {}) => {
+    code = String(code || socket.data.roomCode || "").toUpperCase();
+    const room = rooms.get(code);
+
+    if (
+      !room ||
+      !room.started ||
+      room.finishedQuestion ||
+      !room.players.has(socket.id) ||
+      room.answers.has(socket.id)
+    ) {
+      return;
+    }
+
+    if (
+      !Number.isInteger(answerIndex) ||
+      answerIndex < 0 ||
+      answerIndex >= questions[room.questionIndex].options.length
+    ) {
+      return;
+    }
+
+    const question = questions[room.questionIndex];
+    const correct = answerIndex === question.correctIndex;
+
+    room.answers.set(socket.id, answerIndex);
+
+    if (correct) {
+      room.players.get(socket.id).score += 100;
+    }
+
+    socket.emit("answer-received", { correct });
+
+    io.to(code).emit("answer-count", {
+      answered: room.answers.size,
+      total: room.players.size
+    });
+
+    if (room.answers.size >= room.players.size) {
+      finishQuestion(code);
+    }
+  });
+
+  socket.on("next-question", ({ code } = {}) => {
+    code = String(code || socket.data.roomCode || "").toUpperCase();
+    const room = rooms.get(code);
+
+    if (!room || room.hostId !== socket.id || !room.finishedQuestion) {
+      return;
+    }
+
+    room.questionIndex++;
+
+    if (room.questionIndex >= questions.length) {
+      clearQuestionTimer(room);
+      room.started = false;
+
+      io.to(code).emit("game-over", {
+        players: publicPlayers(room)
+      });
+
+      return;
+    }
+
+    sendQuestion(code);
+  });
+
+  socket.on("disconnect", () => {
+    const code = socket.data.roomCode;
+    const room = rooms.get(code);
+
+    if (!room) return;
+
+    if (room.hostId === socket.id) {
+      clearQuestionTimer(room);
+      io.to(code).emit("room-closed", "O apresentador saiu da sala.");
+      rooms.delete(code);
+      return;
+    }
+
+    room.players.delete(socket.id);
+    room.answers.delete(socket.id);
+
+    if (
+      room.started &&
+      !room.finishedQuestion &&
+      room.players.size > 0 &&
+      room.answers.size >= room.players.size
+    ) {
+      finishQuestion(code);
+    }
+
+    sendRoomUpdate(code);
+
+    if (room.players.size === 0 && !room.started) {
+      clearQuestionTimer(room);
+      rooms.delete(code);
+    }
+  });
+});
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Quiz iniciado na porta ${PORT}`);
+});
+
