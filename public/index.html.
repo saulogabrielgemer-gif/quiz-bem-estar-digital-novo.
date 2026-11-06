@@ -355,6 +355,7 @@
     currentQuestion = data.index;
     totalQuestions = data.totalQuestions;
     answered = false;
+show("answerOptions");
 
     hide("roomPanel");
     hide("finalPanel");
